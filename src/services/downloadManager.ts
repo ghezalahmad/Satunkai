@@ -16,6 +16,51 @@ type StatusCallback = (id: string, status: DownloadStatus, error?: string) => vo
 let progressCallback: ProgressCallback | null = null;
 let statusCallback: StatusCallback | null = null;
 
+// Satūnkai Backend API (your own server for reliable downloads)
+const SATUNKAI_API = 'https://satunkai-api.onrender.com';
+
+/**
+ * Resolve video URL using Satūnkai backend (yt-dlp powered)
+ * This is the most reliable method for all platforms
+ */
+async function resolveSatunkaiBackend(url: string): Promise<string | null> {
+    try {
+        console.log('Trying Satūnkai backend...');
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout for cold starts
+
+        const response = await fetch(`${SATUNKAI_API}/extract`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url, quality: '1080' }),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            console.log('Satūnkai backend returned error:', response.status);
+            return null;
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.url) {
+            console.log(`Satūnkai backend resolved: ${data.platform} - ${data.title}`);
+            return data.url;
+        }
+
+        console.log('Satūnkai backend could not extract:', data.error);
+        return null;
+    } catch (error) {
+        console.log('Satūnkai backend error:', error);
+        return null;
+    }
+}
+
 export function setDownloadCallbacks(onProgress: ProgressCallback, onStatus: StatusCallback): void {
     progressCallback = onProgress;
     statusCallback = onStatus;
@@ -215,6 +260,24 @@ async function fetchCobalt(apiUrl: string, originalUrl: string): Promise<string 
  */
 async function resolveMediaUrl(originalUrl: string): Promise<string> {
     const url = originalUrl.toLowerCase();
+
+    // Check if it's a social media URL that our backend supports
+    const isSocialMedia =
+        url.includes('youtube.com') ||
+        url.includes('youtu.be') ||
+        url.includes('tiktok.com') ||
+        url.includes('facebook.com') ||
+        url.includes('fb.watch') ||
+        url.includes('instagram.com') ||
+        url.includes('twitter.com') ||
+        url.includes('x.com');
+
+    // 0. TRY SATUNKAI BACKEND FIRST (most reliable for all platforms)
+    if (isSocialMedia) {
+        const backendUrl = await resolveSatunkaiBackend(originalUrl);
+        if (backendUrl) return backendUrl;
+        console.log('Satūnkai backend failed, trying fallback APIs...');
+    }
 
     // 1. TIKTOK (TikWM) - Prefer HD version
     if (url.includes('tiktok.com')) {
