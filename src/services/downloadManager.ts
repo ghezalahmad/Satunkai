@@ -347,7 +347,18 @@ async function resolveMediaUrl(originalUrl: string): Promise<string> {
             if (videoUrl) return videoUrl;
         }
 
-        throw new Error("YouTube servers are currently unavailable. Please try again in a few minutes, or use 'Open in App' to watch on YouTube.");
+        // Platform-specific error messages
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            throw new Error("YouTube is blocking downloads. Try 'Open in App' to watch on YouTube, or try a different video.");
+        } else if (url.includes('facebook.com') || url.includes('fb.watch')) {
+            throw new Error("Facebook video unavailable. Try 'Open in App' to view on Facebook, or make sure the video is public.");
+        } else if (url.includes('instagram.com')) {
+            throw new Error("Instagram content unavailable. Try 'Open in App' to view on Instagram. Private accounts cannot be downloaded.");
+        } else if (url.includes('twitter.com') || url.includes('x.com')) {
+            throw new Error("X/Twitter video unavailable. Try 'Open in App' to view, or the tweet may be private/deleted.");
+        } else {
+            throw new Error("Video unavailable. The content may be private, deleted, or temporarily blocked.");
+        }
     }
 
     return originalUrl;
