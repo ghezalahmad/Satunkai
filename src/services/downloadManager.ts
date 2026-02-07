@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as ExpoFileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
 import { Download, DownloadStatus } from '../types';
 import { deleteDownload, getDownloadById, insertDownload, updateDownload } from './storage';
 import { generateFilename } from './urlDetect';
@@ -261,25 +262,7 @@ async function fetchCobalt(apiUrl: string, originalUrl: string): Promise<string 
 async function resolveMediaUrl(originalUrl: string): Promise<string> {
     const url = originalUrl.toLowerCase();
 
-    // Check if it's a social media URL that our backend supports
-    const isSocialMedia =
-        url.includes('youtube.com') ||
-        url.includes('youtu.be') ||
-        url.includes('tiktok.com') ||
-        url.includes('facebook.com') ||
-        url.includes('fb.watch') ||
-        url.includes('instagram.com') ||
-        url.includes('twitter.com') ||
-        url.includes('x.com');
-
-    // 0. TRY SATUNKAI BACKEND FIRST (most reliable for all platforms)
-    if (isSocialMedia) {
-        const backendUrl = await resolveSatunkaiBackend(originalUrl);
-        if (backendUrl) return backendUrl;
-        console.log('Satūnkai backend failed, trying fallback APIs...');
-    }
-
-    // 1. TIKTOK (TikWM) - Prefer HD version
+    // 1. TIKTOK (TikWM FIRST - most reliable, yt-dlp URLs are domain-restricted)
     if (url.includes('tiktok.com')) {
         try {
             console.log('Fetching TikTok data from TikWM (HD)...');
@@ -288,17 +271,37 @@ async function resolveMediaUrl(originalUrl: string): Promise<string> {
             // Prefer HD version, fallback to standard
             if (data.data) {
                 if (data.data.hdplay) {
-                    console.log('TikTok: Using HD version');
+                    console.log('TikTok: Using HD version from TikWM');
                     return data.data.hdplay;
                 }
                 if (data.data.play) {
-                    console.log('TikTok: HD not available, using standard');
+                    console.log('TikTok: HD not available, using standard from TikWM');
                     return data.data.play;
                 }
             }
         } catch (e) {
-            console.warn('TikWM failed, trying Cobalt fallback');
+            console.warn('TikWM failed, trying backend fallback');
+            // Try backend as fallback for TikTok
+            const backendUrl = await resolveSatunkaiBackend(originalUrl);
+            if (backendUrl) return backendUrl;
         }
+    }
+
+    // Check if it's a social media URL that our backend supports (excluding TikTok)
+    const isSocialMedia =
+        url.includes('youtube.com') ||
+        url.includes('youtu.be') ||
+        url.includes('facebook.com') ||
+        url.includes('fb.watch') ||
+        url.includes('instagram.com') ||
+        url.includes('twitter.com') ||
+        url.includes('x.com');
+
+    // 2. TRY SATUNKAI BACKEND FOR OTHER PLATFORMS
+    if (isSocialMedia) {
+        const backendUrl = await resolveSatunkaiBackend(originalUrl);
+        if (backendUrl) return backendUrl;
+        console.log('Satūnkai backend failed, trying fallback APIs...');
     }
 
     // 2. YOUTUBE (Piped API first, then Invidious)
@@ -443,6 +446,17 @@ export async function startDownload(url: string, customFilename?: string): Promi
         if (result) {
             const fileInfo = await FileSystem.getInfoAsync(result.uri);
             if (fileInfo.size < 10000) throw new Error("Download failed (File too small/corrupt)");
+
+            // Save to device Gallery/Photos
+            try {
+                const { status } = await MediaLibrary.requestPermissionsAsync();
+                if (status === 'granted') {
+                    await MediaLibrary.saveToLibraryAsync(result.uri);
+                    console.log('Video saved to Gallery!');
+                }
+            } catch (galleryError) {
+                console.warn('Could not save to Gallery:', galleryError);
+            }
 
             download.status = 'completed';
             download.progress = 1;
