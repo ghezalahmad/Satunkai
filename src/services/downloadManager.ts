@@ -408,6 +408,9 @@ export async function startDownload(url: string, customFilename?: string): Promi
             {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': url, // Add original URL as referer
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
                 },
             },
             (downloadProgress: any) => {
@@ -439,7 +442,7 @@ export async function startDownload(url: string, customFilename?: string): Promi
 
         if (result) {
             const fileInfo = await FileSystem.getInfoAsync(result.uri);
-            if (fileInfo.size < 50000) throw new Error("Download failed (File too small/corrupt)");
+            if (fileInfo.size < 10000) throw new Error("Download failed (File too small/corrupt)");
 
             download.status = 'completed';
             download.progress = 1;
